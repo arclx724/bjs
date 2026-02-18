@@ -32,7 +32,7 @@ class Config:
         self.VIDEO_PLAY: bool = getenv("VIDEO_PLAY", "True").lower() == "true"
 
         self.LANG_CODE = getenv("LANG_CODE", "en")
-        self.COOKIES_URL = ["https://batbin.me/reharden"] 
+        self.COOKIES_URL = ["https://batbin.me/reharden", "https://batbin.me/saccomyoidean"] 
         # -----------------------------
         self.DEFAULT_THUMB = getenv("DEFAULT_THUMB", "https://te.legra.ph/file/3e40a408286d4eda24191.jpg")
         self.PING_IMG = getenv("PING_IMG", "https://files.catbox.moe/haagg2.png")
