@@ -11,6 +11,21 @@ from py_yt import Playlist, VideosSearch
 from anony import logger
 from anony.helpers import Track, utils
 
+API_URL = "https://shrutibots.site"
+
+async def fetch_api_url():
+    global API_URL
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get("https://pastebin.com/raw/rLsBhAQa", timeout=5) as response:
+                if response.status == 200:
+                    API_URL = (await response.text()).strip()
+    except Exception:
+        pass
+
+# Boot time par original API link load karna
+asyncio.get_event_loop().create_task(fetch_api_url())
+
 class YouTube:
     def __init__(self):
         self.base = "https://www.youtube.com/watch?v="
@@ -19,9 +34,7 @@ class YouTube:
             r"(youtube\.com/(watch\?v=|shorts/|playlist\?list=)|youtu\.be/)"
             r"([A-Za-z0-9_-]{11}|PL[A-Za-z0-9_-]+)([&?][^\s]*)?"
         )
-        self.api_url = "https://shrutibots.site"
 
-    # Ye raha dummy function taaki bot crash na ho
     async def save_cookies(self, urls: list[str]) -> None:
         logger.info("Cookies bypassed. Using ShrutiBots API for downloads.")
         pass
@@ -78,44 +91,45 @@ class YouTube:
         ext = "mp4" if video else "mp3"
         file_path = os.path.join(DOWNLOAD_DIR, f"{video_id}.{ext}")
 
+        # Agar purani file corrupt ya khali hai toh usko delete maro
         if os.path.exists(file_path):
-            return file_path
+            if os.path.getsize(file_path) > 50000:
+                return file_path
+            else:
+                os.remove(file_path)
 
-        logger.info(f"Downloading {video_id} using ShrutiBots API Bypass...")
+        global API_URL
+        logger.info(f"Downloading {video_id} using ShrutiBots API Bypass... ({API_URL})")
+        
         try:
             async with aiohttp.ClientSession() as session:
                 params = {"url": video_id, "type": "video" if video else "audio"}
-                
-                async with session.get(
-                    f"{self.api_url}/download",
-                    params=params,
-                    timeout=aiohttp.ClientTimeout(total=60)
-                ) as response:
+                async with session.get(f"{API_URL}/download", params=params, timeout=60) as response:
                     if response.status != 200:
                         return None
-
                     data = await response.json()
                     download_token = data.get("download_token")
                     
                     if not download_token:
                         return None
                     
-                    stream_url = f"{self.api_url}/stream/{video_id}?type={'video' if video else 'audio'}"
+                    stream_url = f"{API_URL}/stream/{video_id}?type={'video' if video else 'audio'}"
                     
-                    async with session.get(
-                        stream_url,
-                        headers={"X-Download-Token": download_token},
-                        timeout=aiohttp.ClientTimeout(total=300)
-                    ) as file_response:
+                    async with session.get(stream_url, headers={"X-Download-Token": download_token}, timeout=300) as file_response:
                         if file_response.status != 200:
                             return None
                             
                         with open(file_path, "wb") as f:
                             async for chunk in file_response.content.iter_chunked(16384):
                                 f.write(chunk)
-                        
+                                
+                        # FINAL CHECK: Khali file download hone par error do
+                        if os.path.getsize(file_path) < 50000:
+                            os.remove(file_path)
+                            return None
+                            
                         return file_path
         except Exception as e:
             logger.error(f"API Download Exception: {e}")
             return None
-        
+            
