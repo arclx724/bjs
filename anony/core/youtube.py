@@ -101,46 +101,34 @@ class YouTube:
 
     async def download(self, video_id: str, video: bool = False) -> str | None:
         url = self.base + video_id
-        ext = "mp4" if video else "webm"
-        filename = f"downloads/{video_id}.{ext}"
-
-        if Path(filename).exists():
-            return filename
-
         cookie = self.get_cookies()
-        base_opts = {
-            "outtmpl": "downloads/%(id)s.%(ext)s",
+
+        ydl_opts = {
             "quiet": True,
-            "noplaylist": True,
-            "geo_bypass": True,
             "no_warnings": True,
-            "overwrites": False,
+            "geo_bypass": True,
             "nocheckcertificate": True,
             "cookiefile": cookie,
+            "format": "bestaudio/best" if not video else "best[height<=?720]",
         }
 
-        if video:
-            ydl_opts = {
-                **base_opts,
-                "format": "(bestvideo[height<=?720][width<=?1280][ext=mp4])+(bestaudio)",
-                "merge_output_format": "mp4",
-            }
-        else:
-            ydl_opts = {
-                **base_opts,
-                "format": "bestaudio[ext=webm][acodec=opus]",
-            }
-
-        def _download():
+        def _get_stream_url():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 try:
-                    ydl.download([url])
-                except (yt_dlp.utils.DownloadError, yt_dlp.utils.ExtractorError):
-                    if cookie: self.cookies.remove(cookie)
-                    return None
+                    info = ydl.extract_info(url, download=False)
+                    if 'url' in info:
+                        return info['url']
+                    elif 'requested_formats' in info:
+                        for fmt in info['requested_formats']:
+                            if fmt.get('acodec') != 'none' and fmt.get('vcodec') == 'none':
+                                return fmt['url']
+                        return info['requested_formats'][0]['url']
                 except Exception as ex:
-                    logger.warning("Download failed: %s", ex)
+                    logger.warning("Stream URL extraction failed: %s", ex)
+                    if cookie and cookie in self.cookies:
+                        self.cookies.remove(cookie)
                     return None
-            return filename
+            return None
 
-        return await asyncio.to_thread(_download)
+        return await asyncio.to_thread(_get_stream_url)
+        
