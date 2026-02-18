@@ -21,6 +21,11 @@ class YouTube:
         )
         self.api_url = "https://shrutibots.site"
 
+    # Ye raha dummy function taaki bot crash na ho
+    async def save_cookies(self, urls: list[str]) -> None:
+        logger.info("Cookies bypassed. Using ShrutiBots API for downloads.")
+        pass
+
     def valid(self, url: str) -> bool:
         return bool(re.match(self.regex, url))
 
@@ -76,7 +81,7 @@ class YouTube:
         if os.path.exists(file_path):
             return file_path
 
-        logger.info(f"Downloading {video_id} using API Bypass...")
+        logger.info(f"Downloading {video_id} using ShrutiBots API Bypass...")
         try:
             async with aiohttp.ClientSession() as session:
                 params = {"url": video_id, "type": "video" if video else "audio"}
@@ -113,4 +118,4 @@ class YouTube:
         except Exception as e:
             logger.error(f"API Download Exception: {e}")
             return None
-            
+        
