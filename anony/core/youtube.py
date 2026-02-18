@@ -6,46 +6,19 @@
 import os
 import re
 import yt_dlp
-import random
 import asyncio
-import aiohttp
-from pathlib import Path
-
 from py_yt import Playlist, VideosSearch
-
 from anony import logger
 from anony.helpers import Track, utils
-
 
 class YouTube:
     def __init__(self):
         self.base = "https://www.youtube.com/watch?v="
-        self.cookies = []
-        self.checked = False
-        self.cookie_dir = "anony/cookies"
-        self.warned = False
         self.regex = re.compile(
             r"(https?://)?(www\.|m\.|music\.)?"
             r"(youtube\.com/(watch\?v=|shorts/|playlist\?list=)|youtu\.be/)"
             r"([A-Za-z0-9_-]{11}|PL[A-Za-z0-9_-]+)([&?][^\s]*)?"
         )
-
-    def get_cookies(self):
-        if not self.checked:
-            for file in os.listdir(self.cookie_dir):
-                if file.endswith(".txt"):
-                    self.cookies.append(f"{self.cookie_dir}/{file}")
-            self.checked = True
-        if not self.cookies:
-            if not self.warned:
-                self.warned = True
-                logger.warning("Cookies are missing; downloads might fail.")
-            return None
-        return random.choice(self.cookies)
-
-    async def save_cookies(self, urls: list[str]) -> None:
-        logger.info("Auto-cookie download disabled. Reading local manual cookies only.")
-        pass
 
     def valid(self, url: str) -> bool:
         return bool(re.match(self.regex, url))
@@ -93,19 +66,15 @@ class YouTube:
 
     async def download(self, video_id: str, video: bool = False) -> str | None:
         url = self.base + video_id
-        cookie = self.get_cookies()
 
         ydl_opts = {
             "quiet": True,
             "no_warnings": True,
             "geo_bypass": True,
             "nocheckcertificate": True,
-            "cookiefile": cookie,
+            "username": "oauth2",
+            "password": "",
             "format": "bestaudio/best" if not video else "best[height<=?720]",
-            "extractor_args": {"youtube": ["client=IOS,ANDROID,TV"]},
-            "http_headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
         }
 
         def _get_stream_url():
@@ -120,8 +89,7 @@ class YouTube:
                                 return fmt['url']
                         return info['requested_formats'][0]['url']
                 except Exception as ex:
-                    logger.warning("Stream URL extraction failed: %s", ex)
-                    # Yahan se cookie delete hone wali line permanently hata di gayi hai
+                    logger.warning(f"Stream URL extraction failed: {ex}")
                     return None
             return None
 
