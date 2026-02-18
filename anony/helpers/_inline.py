@@ -42,6 +42,7 @@ class Inline:
                     self.ikb(text="⥁", callback_data=f"controls replay {chat_id}"),
                     self.ikb(text="‣‣I", callback_data=f"controls skip {chat_id}"),
                     self.ikb(text="▢", callback_data=f"controls stop {chat_id}"),
+
                 ]
             )
         return self.ikm(keyboard)
@@ -152,8 +153,8 @@ class Inline:
             rows += [
                 [
                     self.ikb(
-                        text=lang["source"],
-                        url="https://github.com/AnonymousX1025/AnonXMusic",
+                        text=lang["Boss"],
+                        url="https://t.me/Slaywithrose",
                     )
                 ]
             ]
