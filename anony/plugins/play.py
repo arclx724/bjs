@@ -3,132 +3,126 @@
 # This file is part of AnonXMusic
 
 
-import os
-import re
-import yt_dlp
-import random
-import asyncio
-import aiohttp
 from pathlib import Path
 
-from py_yt import Playlist, VideosSearch
+from pyrogram import filters, types
 
-from anony import logger
-from anony.helpers import Track, utils
+from anony import anon, app, config, db, lang, queue, tg, yt
+from anony.helpers import buttons, utils
+# Removed checkUB import to prevent assistant None error
 
+def playlist_to_queue(chat_id: int, tracks: list) -> str:
+    text = "<blockquote expandable>"
+    for track in tracks:
+        pos = queue.add(chat_id, track)
+        text += f"<b>{pos}.</b> {track.title}\n"
+    text = text[:1948] + "</blockquote>"
+    return text
 
-class YouTube:
-    def __init__(self):
-        self.base = "https://www.youtube.com/watch?v="
-        self.cookies = []
-        self.checked = False
-        self.cookie_dir = "anony/cookies"
-        self.warned = False
-        self.regex = re.compile(
-            r"(https?://)?(www\.|m\.|music\.)?"
-            r"(youtube\.com/(watch\?v=|shorts/|playlist\?list=)|youtu\.be/)"
-            r"([A-Za-z0-9_-]{11}|PL[A-Za-z0-9_-]+)([&?][^\s]*)?"
+@app.on_message(
+    filters.command(["play", "playforce", "vplay", "vplayforce"], prefixes=["/", "!", "."])
+    & filters.group
+)
+@lang.language()
+async def play_hndlr(
+    _,
+    m: types.Message,
+    force: bool = False,
+    m3u8: bool = False,
+    video: bool = False,
+    url: str = None,
+) -> None:
+    sent = await m.reply_text(m.lang["play_searching"])
+    file = None
+    mention = m.from_user.mention
+    media = tg.get_media(m.reply_to_message) if m.reply_to_message else None
+    tracks = []
+
+    if media:
+        setattr(sent, "lang", m.lang)
+        file = await tg.download(m.reply_to_message, sent)
+
+    elif m3u8:
+        file = await tg.process_m3u8(url, sent.id, video)
+
+    elif url:
+        if "playlist" in url:
+            await sent.edit_text(m.lang["playlist_fetch"])
+            tracks = await yt.playlist(
+                config.PLAYLIST_LIMIT, mention, url, video
+            )
+
+            if not tracks:
+                return await sent.edit_text(m.lang["playlist_error"])
+
+            file = tracks[0]
+            tracks.remove(file)
+            file.message_id = sent.id
+        else:
+            file = await yt.search(url, sent.id, video=video)
+
+        if not file:
+            return await sent.edit_text(
+                m.lang["play_not_found"].format(config.SUPPORT_CHAT)
+            )
+
+    elif len(m.command) >= 2:
+        query = " ".join(m.command[1:])
+        file = await yt.search(query, sent.id, video=video)
+        if not file:
+            return await sent.edit_text(
+                m.lang["play_not_found"].format(config.SUPPORT_CHAT)
+            )
+
+    if not file:
+        return await sent.edit_text(m.lang["play_usage"])
+
+    if file.duration_sec > config.DURATION_LIMIT:
+        return await sent.edit_text(
+            m.lang["play_duration_limit"].format(config.DURATION_LIMIT // 60)
         )
 
-    def get_cookies(self):
-        if not self.checked:
-            for file in os.listdir(self.cookie_dir):
-                if file.endswith(".txt"):
-                    self.cookies.append(f"{self.cookie_dir}/{file}")
-            self.checked = True
-        if not self.cookies:
-            if not self.warned:
-                self.warned = True
-                logger.warning("Cookies are missing; downloads might fail.")
-            return None
-        return random.choice(self.cookies)
+    if await db.is_logger():
+        await utils.play_log(m, sent.link, file.title, file.duration)
 
-    async def save_cookies(self, urls: list[str]) -> None:
-        logger.info("Saving cookies from urls...")
-        async with aiohttp.ClientSession() as session:
-            for url in urls:
-                name = url.split("/")[-1]
-                link = "https://batbin.me/raw/" + name
-                async with session.get(link) as resp:
-                    resp.raise_for_status()
-                    with open(f"{self.cookie_dir}/{name}.txt", "wb") as fw:
-                        fw.write(await resp.read())
-        logger.info(f"Cookies saved in {self.cookie_dir}.")
+    file.user = mention
+    if force:
+        queue.force_add(m.chat.id, file)
+    else:
+        position = queue.add(m.chat.id, file)
 
-    def valid(self, url: str) -> bool:
-        return bool(re.match(self.regex, url))
-
-    async def search(self, query: str, m_id: int, video: bool = False) -> Track | None:
-        _search = VideosSearch(query, limit=1, with_live=False)
-        results = await _search.next()
-        if results and results["result"]:
-            data = results["result"][0]
-            return Track(
-                id=data.get("id"),
-                channel_name=data.get("channel", {}).get("name"),
-                duration=data.get("duration"),
-                duration_sec=utils.to_seconds(data.get("duration")),
-                message_id=m_id,
-                title=data.get("title")[:25],
-                thumbnail=data.get("thumbnails", [{}])[-1].get("url").split("?")[0],
-                url=data.get("link"),
-                view_count=data.get("viewCount", {}).get("short"),
-                video=video,
+        if position != 0 or await db.get_call(m.chat.id):
+            await sent.edit_text(
+                m.lang["play_queued"].format(
+                    position,
+                    file.url,
+                    file.title,
+                    file.duration,
+                    m.from_user.mention,
+                ),
+                reply_markup=buttons.play_queued(
+                    m.chat.id, file.id, m.lang["play_now"]
+                ),
             )
-        return None
-
-    async def playlist(self, limit: int, user: str, url: str, video: bool) -> list[Track | None]:
-        tracks = []
-        try:
-            plist = await Playlist.get(url)
-            for data in plist["videos"][:limit]:
-                track = Track(
-                    id=data.get("id"),
-                    channel_name=data.get("channel", {}).get("name", ""),
-                    duration=data.get("duration"),
-                    duration_sec=utils.to_seconds(data.get("duration")),
-                    title=data.get("title")[:25],
-                    thumbnail=data.get("thumbnails")[-1].get("url").split("?")[0],
-                    url=data.get("link").split("&list=")[0],
-                    user=user,
-                    view_count="",
-                    video=video,
+            if tracks:
+                added = playlist_to_queue(m.chat.id, tracks)
+                await app.send_message(
+                    chat_id=m.chat.id,
+                    text=m.lang["playlist_queued"].format(len(tracks)) + added,
                 )
-                tracks.append(track)
-        except Exception:
-            pass
-        return tracks
+            return
 
-    async def download(self, video_id: str, video: bool = False) -> str | None:
-        url = self.base + video_id
-        cookie = self.get_cookies()
+    if not file.file_path:
+        file.file_path = await yt.download(file.id, video=video)
+        if not file.file_path:
+            return await sent.edit_text(m.lang["error_no_file"].format(config.SUPPORT_CHAT))
 
-        ydl_opts = {
-            "quiet": True,
-            "no_warnings": True,
-            "geo_bypass": True,
-            "nocheckcertificate": True,
-            "cookiefile": cookie,
-            "format": "bestaudio/best" if not video else "best[height<=?720]",
-        }
-
-        def _get_stream_url():
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                try:
-                    info = ydl.extract_info(url, download=False)
-                    if 'url' in info:
-                        return info['url']
-                    elif 'requested_formats' in info:
-                        for fmt in info['requested_formats']:
-                            if fmt.get('acodec') != 'none' and fmt.get('vcodec') == 'none':
-                                return fmt['url']
-                        return info['requested_formats'][0]['url']
-                except Exception as ex:
-                    logger.warning("Stream URL extraction failed: %s", ex)
-                    if cookie and cookie in self.cookies:
-                        self.cookies.remove(cookie)
-                    return None
-            return None
-
-        return await asyncio.to_thread(_get_stream_url)
-        
+    await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
+    if not tracks:
+        return
+    added = playlist_to_queue(m.chat.id, tracks)
+    await app.send_message(
+        chat_id=m.chat.id,
+        text=m.lang["playlist_queued"].format(len(tracks)) + added,
+    )
+    
