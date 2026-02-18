@@ -58,7 +58,11 @@ class TgCall(PyTgCalls):
             await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
             return await self.play_next(chat_id)
           
-        ffmpeg_params = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+        # FIX: Reconnect flags sirf online HTTP streams ke liye honge, local file ke liye nahi!
+        ffmpeg_params = ""
+        if str(media.file_path).startswith("http"):
+            ffmpeg_params = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+            
         if seek_time > 1:
             ffmpeg_params += f" -ss {seek_time}"
 
@@ -72,7 +76,7 @@ class TgCall(PyTgCalls):
                 if media.video
                 else types.MediaStream.Flags.IGNORE
             ),
-            ffmpeg_parameters=ffmpeg_params,
+            ffmpeg_parameters=ffmpeg_params if ffmpeg_params else None,
         )
         try:
             await client.play(
@@ -196,4 +200,4 @@ class TgCall(PyTgCalls):
             self.clients.append(client)
             await self.decorators(client)
         logger.info("PyTgCalls client(s) started.")
-      
+          
