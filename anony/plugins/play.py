@@ -115,7 +115,7 @@ async def play_hndlr(
                 )
             return
 
-    if not file.file_path:
+        if not file.file_path:
         fname = f"downloads/{file.id}.{'mp4' if video else 'webm'}"
         if Path(fname).exists():
             file.file_path = fname
