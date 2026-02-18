@@ -33,7 +33,7 @@ async def auto_leave():
                         enums.ChatType.SUPERGROUP,
                     ]:
                         continue
-                    if chat.id in [app.logger, -1001686672798, -1001549206010]:
+                    if chat.id == app.logger:
                         continue
                     if chat.id in db.active_calls:
                         continue
