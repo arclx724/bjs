@@ -5,8 +5,7 @@
 
 import os
 import re
-import yt_dlp
-import random
+import aiohttp
 import asyncio
 from py_yt import Playlist, VideosSearch
 from anony import logger
@@ -15,18 +14,12 @@ from anony.helpers import Track, utils
 class YouTube:
     def __init__(self):
         self.base = "https://www.youtube.com/watch?v="
-        self.cookie_dir = "anony/cookies"
         self.regex = re.compile(
             r"(https?://)?(www\.|m\.|music\.)?"
             r"(youtube\.com/(watch\?v=|shorts/|playlist\?list=)|youtu\.be/)"
             r"([A-Za-z0-9_-]{11}|PL[A-Za-z0-9_-]+)([&?][^\s]*)?"
         )
-
-    def get_cookies(self):
-        if not os.path.exists(self.cookie_dir):
-            return None
-        cookies = [f"{self.cookie_dir}/{f}" for f in os.listdir(self.cookie_dir) if f.endswith(".txt")]
-        return random.choice(cookies) if cookies else None
+        self.api_url = "https://shrutibots.site"
 
     def valid(self, url: str) -> bool:
         return bool(re.match(self.regex, url))
@@ -74,37 +67,50 @@ class YouTube:
 
     async def download(self, video_id: str, video: bool = False) -> str | None:
         url = self.base + video_id
-        cookie = self.get_cookies()
-
-        ydl_opts = {
-            "quiet": True,
-            "no_warnings": True,
-            "geo_bypass": True,
-            "nocheckcertificate": True,
-            "format": "bestaudio/best" if not video else "best[height<=?720]",
-            "extractor_args": {"youtube": ["player_client=ANDROID_TESTSUITE,WEB_EMBED,IOS"]},
-            "http_headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
-        }
-        if cookie:
-            ydl_opts["cookiefile"] = cookie
-
-        def _get_stream_url():
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                try:
-                    info = ydl.extract_info(url, download=False)
-                    if 'url' in info:
-                        return info['url']
-                    elif 'requested_formats' in info:
-                        for fmt in info['requested_formats']:
-                            if fmt.get('acodec') != 'none' and fmt.get('vcodec') == 'none':
-                                return fmt['url']
-                        return info['requested_formats'][0]['url']
-                except Exception as ex:
-                    logger.warning(f"Stream URL extraction failed: {ex}")
-                    return None
-            return None
-
-        return await asyncio.to_thread(_get_stream_url)
+        DOWNLOAD_DIR = "downloads"
+        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
         
+        ext = "mp4" if video else "mp3"
+        file_path = os.path.join(DOWNLOAD_DIR, f"{video_id}.{ext}")
+
+        if os.path.exists(file_path):
+            return file_path
+
+        logger.info(f"Downloading {video_id} using API Bypass...")
+        try:
+            async with aiohttp.ClientSession() as session:
+                params = {"url": video_id, "type": "video" if video else "audio"}
+                
+                async with session.get(
+                    f"{self.api_url}/download",
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=60)
+                ) as response:
+                    if response.status != 200:
+                        return None
+
+                    data = await response.json()
+                    download_token = data.get("download_token")
+                    
+                    if not download_token:
+                        return None
+                    
+                    stream_url = f"{self.api_url}/stream/{video_id}?type={'video' if video else 'audio'}"
+                    
+                    async with session.get(
+                        stream_url,
+                        headers={"X-Download-Token": download_token},
+                        timeout=aiohttp.ClientTimeout(total=300)
+                    ) as file_response:
+                        if file_response.status != 200:
+                            return None
+                            
+                        with open(file_path, "wb") as f:
+                            async for chunk in file_response.content.iter_chunked(16384):
+                                f.write(chunk)
+                        
+                        return file_path
+        except Exception as e:
+            logger.error(f"API Download Exception: {e}")
+            return None
+            
