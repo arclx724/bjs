@@ -59,6 +59,11 @@ class TgCall(PyTgCalls):
             await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
             return await self.play_next(chat_id)
 
+        direct streaming (ShrutiMusic style) ke liye
+        ffmpeg_params = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+        if seek_time > 1:
+            ffmpeg_params += f" -ss {seek_time}"
+
         stream = types.MediaStream(
             media_path=media.file_path,
             audio_parameters=types.AudioQuality.HIGH,
@@ -69,7 +74,7 @@ class TgCall(PyTgCalls):
                 if media.video
                 else types.MediaStream.Flags.IGNORE
             ),
-            ffmpeg_parameters=f"-ss {seek_time}" if seek_time > 1 else None,
+            ffmpeg_parameters=ffmpeg_params,
         )
         try:
             await client.play(
