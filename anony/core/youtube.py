@@ -44,7 +44,6 @@ class YouTube:
         return random.choice(self.cookies)
 
     async def save_cookies(self, urls: list[str]) -> None:
-        # Humne auto-download bypass kar diya taaki JSON errors na aayein
         logger.info("Auto-cookie download disabled. Reading local manual cookies only.")
         pass
 
@@ -103,7 +102,7 @@ class YouTube:
             "nocheckcertificate": True,
             "cookiefile": cookie,
             "format": "bestaudio/best" if not video else "best[height<=?720]",
-            "extractor_args": {"youtube": ["client=ANDROID_MUSIC,ANDROID,WEB"]},
+            "extractor_args": {"youtube": ["client=IOS,ANDROID,TV"]},
             "http_headers": {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
@@ -122,8 +121,7 @@ class YouTube:
                         return info['requested_formats'][0]['url']
                 except Exception as ex:
                     logger.warning("Stream URL extraction failed: %s", ex)
-                    if cookie and cookie in self.cookies:
-                        self.cookies.remove(cookie)
+                    # Yahan se cookie delete hone wali line permanently hata di gayi hai
                     return None
             return None
 
