@@ -44,16 +44,9 @@ class YouTube:
         return random.choice(self.cookies)
 
     async def save_cookies(self, urls: list[str]) -> None:
-        logger.info("Saving cookies from urls...")
-        async with aiohttp.ClientSession() as session:
-            for url in urls:
-                name = url.split("/")[-1]
-                link = "https://batbin.me/raw/" + name
-                async with session.get(link) as resp:
-                    resp.raise_for_status()
-                    with open(f"{self.cookie_dir}/{name}.txt", "wb") as fw:
-                        fw.write(await resp.read())
-        logger.info(f"Cookies saved in {self.cookie_dir}.")
+        # Humne auto-download bypass kar diya taaki JSON errors na aayein
+        logger.info("Auto-cookie download disabled. Reading local manual cookies only.")
+        pass
 
     def valid(self, url: str) -> bool:
         return bool(re.match(self.regex, url))
