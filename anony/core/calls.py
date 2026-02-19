@@ -63,18 +63,17 @@ class TgCall(PyTgCalls):
         ffmpeg_params = ""
         actual_file_path = media.file_path
 
-        # 🚀 SHRUTIBOTS DIRECT STREAM INJECTOR 🚀
+        # 🚀 API STREAM BYPASS 🚀
         if str(media.file_path).startswith("SHRUTI_STREAM|"):
             try:
                 _, vid_id, token, is_video = str(media.file_path).split("|")
                 v_type = "video" if is_video == "True" else "audio"
                 actual_file_path = f"https://shrutibots.site/stream/{vid_id}?type={v_type}"
-                # FFmpeg ko multiple requests allow karne ka command de rahe hain
-                ffmpeg_params = f'-headers "X-Download-Token: {token}\r\n" -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -multiple_requests 1'
+                ffmpeg_params = f'-headers "X-Download-Token: {token}\r\n" -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
             except Exception as e:
                 logger.error(f"Stream Parse Error: {e}")
         elif str(media.file_path).startswith("http"):
-            ffmpeg_params = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -multiple_requests 1"
+            ffmpeg_params = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
         if seek_time > 1:
             ffmpeg_params += f" -ss {seek_time}"
@@ -179,7 +178,7 @@ class TgCall(PyTgCalls):
         _lang = await lang.get_lang(chat_id)
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
         
-        # 🚀 THE MASTER FIX: ALWAYS FORCE A FRESH TOKEN FOR THE NEXT SONG 🚀
+        # 🚀 YAHAN HAI JADOO: Har skip par purana token delete aur NAYA TOKEN laao! 🚀
         media.file_path = None 
         
         if not media.file_path:
