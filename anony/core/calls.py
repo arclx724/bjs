@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 # This file is part of AnonXMusic
 
+import asyncio
 from ntgcalls import (ConnectionNotFound, TelegramServerError,
                       RTMPStreamingUnsupported, ConnectionError)
 from pyrogram.errors import (ChatSendMediaForbidden, ChatSendPhotosForbidden,
@@ -10,27 +11,24 @@ from pyrogram.types import InputMediaPhoto, Message
 from pytgcalls import PyTgCalls, exceptions, types
 from pytgcalls.pytgcalls_session import PyTgCallsSession
 
+from anony import app, config, db, lang, logger, queue, userbot, yt
 from anony.helpers import Media, Track, buttons, thumb
-
 
 class TgCall(PyTgCalls):
     def __init__(self):
         self.clients = []
 
     async def pause(self, chat_id: int) -> bool:
-        from anony import db
         client = await db.get_assistant(chat_id)
         await db.playing(chat_id, paused=True)
         return await client.pause(chat_id)
 
     async def resume(self, chat_id: int) -> bool:
-        from anony import db
         client = await db.get_assistant(chat_id)
         await db.playing(chat_id, paused=False)
         return await client.resume(chat_id)
 
     async def stop(self, chat_id: int) -> None:
-        from anony import db, queue
         client = await db.get_assistant(chat_id)
         queue.clear(chat_id)
         await db.remove_call(chat_id)
@@ -47,7 +45,6 @@ class TgCall(PyTgCalls):
         media: Media | Track,
         seek_time: int = 0,
     ) -> None:
-        from anony import app, config, db, lang, logger, yt
         client = await db.get_assistant(chat_id)
         _lang = await lang.get_lang(chat_id)
         _thumb = (
@@ -61,25 +58,14 @@ class TgCall(PyTgCalls):
             return await self.play_next(chat_id)
 
         ffmpeg_params = ""
-        actual_file_path = media.file_path
-
-        # 🚀 API STREAM BYPASS 🚀
-        if str(media.file_path).startswith("SHRUTI_STREAM|"):
-            try:
-                _, vid_id, token, is_video = str(media.file_path).split("|")
-                v_type = "video" if is_video == "True" else "audio"
-                actual_file_path = f"https://shrutibots.site/stream/{vid_id}?type={v_type}"
-                ffmpeg_params = f'-headers "X-Download-Token: {token}\r\n" -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
-            except Exception as e:
-                logger.error(f"Stream Parse Error: {e}")
-        elif str(media.file_path).startswith("http"):
+        if str(media.file_path).startswith("http"):
             ffmpeg_params = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
-
+            
         if seek_time > 1:
             ffmpeg_params += f" -ss {seek_time}"
 
         stream = types.MediaStream(
-            media_path=actual_file_path,
+            media_path=media.file_path,
             audio_parameters=types.AudioQuality.HIGH,
             video_parameters=types.VideoQuality.HD_720p,
             audio_flags=types.MediaStream.Flags.REQUIRED,
@@ -149,7 +135,6 @@ class TgCall(PyTgCalls):
             await message.edit_text(_lang["error_rtmp"])
 
     async def replay(self, chat_id: int) -> None:
-        from anony import app, db, lang, queue
         if not await db.get_call(chat_id):
             return
 
@@ -159,7 +144,6 @@ class TgCall(PyTgCalls):
         await self.play_media(chat_id, msg, media)
 
     async def play_next(self, chat_id: int) -> None:
-        from anony import app, config, lang, queue, yt
         media = queue.get_next(chat_id)
         try:
             if media.message_id:
@@ -178,16 +162,13 @@ class TgCall(PyTgCalls):
         _lang = await lang.get_lang(chat_id)
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
         
-        # 🚀 YAHAN HAI JADOO: Har skip par purana token delete aur NAYA TOKEN laao! 🚀
-        media.file_path = None 
-        
+        # 🔥 FRESH DOWNLOAD ON SKIP 🔥
+        media.file_path = await yt.download(media.id, video=media.video)
         if not media.file_path:
-            media.file_path = await yt.download(media.id, video=media.video)
-            if not media.file_path:
-                await self.stop(chat_id)
-                return await msg.edit_text(
-                    _lang["error_no_file"].format(config.SUPPORT_CHAT)
-                )
+            await self.stop(chat_id)
+            return await msg.edit_text(
+                _lang["error_no_file"].format(config.SUPPORT_CHAT)
+            )
 
         media.message_id = msg.id
         await self.play_media(chat_id, msg, media)
@@ -211,7 +192,6 @@ class TgCall(PyTgCalls):
                     await self.stop(update.chat_id)
 
     async def boot(self) -> None:
-        from anony import logger, userbot
         PyTgCallsSession.notice_displayed = True
         for ub in userbot.clients:
             client = PyTgCalls(ub, cache_duration=100)
