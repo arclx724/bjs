@@ -4,6 +4,7 @@
 
 import os
 import re
+import random
 import asyncio
 import aiohttp
 import yt_dlp
@@ -20,6 +21,7 @@ class YouTube:
             r"([A-Za-z0-9_-]{11}|PL[A-Za-z0-9_-]+)([&?][^\s]*)?"
         )
         self.api_url = "https://shrutibots.site"
+        self.cookie_dir = "anony/cookies"
 
     async def save_cookies(self, urls: list[str]) -> None:
         pass
@@ -87,7 +89,6 @@ class YouTube:
         DOWNLOAD_DIR = "downloads"
         os.makedirs(DOWNLOAD_DIR, exist_ok=True)
         
-        # Storage full hone se bachao
         await self.clear_old_files(DOWNLOAD_DIR, keep_limit=10)
 
         ext = "mp4" if video else "mp3"
@@ -96,7 +97,7 @@ class YouTube:
         if os.path.exists(file_path) and os.path.getsize(file_path) > 100000:
             return file_path
 
-        # PLAN A: API se nikalne ki koshish (Fast)
+        # PLAN A: Fast API
         logger.info(f"Fast Downloading {video_id} via ShrutiBots API...")
         api_success = False
         try:
@@ -120,7 +121,7 @@ class YouTube:
         if api_success and os.path.exists(file_path) and os.path.getsize(file_path) > 100000:
             return file_path
 
-        # PLAN B: Agar API down ho, toh standard yt-dlp fallback use karo (Stable)
+        # PLAN B: Fallback (Ab ye cookies use karega 18+ gaano ke liye!)
         logger.info(f"API failed. Using Fallback yt-dlp to download {video_id}...")
         
         def _fallback_download():
@@ -132,6 +133,13 @@ class YouTube:
                 "nocheckcertificate": True,
                 "extractor_args": {"youtube": ["client=ANDROID_CREATOR,WEB_EMBED,IOS"]},
             }
+            
+            # Agar folder me cookies.txt hai toh use utha lo
+            if os.path.exists(self.cookie_dir):
+                cookies = [os.path.join(self.cookie_dir, f) for f in os.listdir(self.cookie_dir) if f.endswith(".txt")]
+                if cookies:
+                    ydl_opts["cookiefile"] = random.choice(cookies)
+
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([self.base + video_id])
@@ -145,4 +153,4 @@ class YouTube:
             return file_path
 
         return None
-                                
+        
