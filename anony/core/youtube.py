@@ -69,6 +69,7 @@ class YouTube:
         return tracks
 
     async def clear_old_files(self, directory: str, keep_limit: int = 10):
+        # 🔥 AWS Storage Saver 🔥
         try:
             files = [os.path.join(directory, f) for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
             if len(files) > keep_limit:
@@ -120,7 +121,7 @@ class YouTube:
         if api_success and os.path.exists(file_path) and os.path.getsize(file_path) > 100000:
             return file_path
 
-        # PLAN B: Ultra-Bypass yt-dlp Fallback (No Cookies Needed!)
+        # PLAN B: Ultra-Bypass yt-dlp Fallback (No bot detection!)
         logger.info(f"API failed. Using Fallback yt-dlp to download {video_id}...")
         
         def _fallback_download():
@@ -130,12 +131,17 @@ class YouTube:
                 "quiet": True,
                 "geo_bypass": True,
                 "nocheckcertificate": True,
-                # 🔥 THE MASTER BYPASS 🔥 - YouTube ko lagega iPhone ya Smart TV se request aa rahi hai
+                # iPhone aur Smart TV ka bypass
                 "extractor_args": {"youtube": ["client=IOS,TV", "player_client=IOS,TV"]},
                 "http_headers": {
                     "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
                 }
             }
+            
+            # 🔥 Cookie Injector 🔥 (Agar file bahar rakhi hai toh use karega)
+            if os.path.exists("cookies.txt"):
+                ydl_opts["cookiefile"] = "cookies.txt"
+
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([self.base + video_id])
@@ -149,4 +155,4 @@ class YouTube:
             return file_path
 
         return None
-        
+                          
