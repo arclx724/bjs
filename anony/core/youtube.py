@@ -5,7 +5,6 @@
 import os
 import re
 import yt_dlp
-import random
 import asyncio
 import aiohttp
 from pathlib import Path
@@ -71,17 +70,36 @@ class YouTube:
         return tracks
 
     async def download(self, video_id: str, video: bool = False) -> str | None:
-        logger.info(f"Extracting Shrutibots API Token for Instant Stream ({video_id})...")
+        DOWNLOAD_DIR = "downloads"
+        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+        ext = "mp4" if video else "mp3"
+        file_path = os.path.join(DOWNLOAD_DIR, f"{video_id}.{ext}")
+
+        # Agar pehle se download hai aur file size sahi hai, toh instant return karo
+        if os.path.exists(file_path) and os.path.getsize(file_path) > 100000:
+            return file_path
+
+        logger.info(f"Fast Downloading {video_id} via ShrutiBots API...")
         try:
             async with aiohttp.ClientSession() as session:
                 params = {"url": video_id, "type": "video" if video else "audio"}
-                async with session.get(f"{self.api_url}/download", params=params, timeout=10) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        token = data.get("download_token")
-                        if token:
-                            return f"SHRUTI_STREAM|{video_id}|{token}|{video}"
+                async with session.get(f"{self.api_url}/download", params=params, timeout=30) as response:
+                    if response.status != 200:
+                        return None
+                    data = await response.json()
+                    token = data.get("download_token")
+                    if not token:
+                        return None
+                    
+                    stream_url = f"{self.api_url}/stream/{video_id}?type={'video' if video else 'audio'}"
+                    async with session.get(stream_url, headers={"X-Download-Token": token}, timeout=120) as file_response:
+                        if file_response.status != 200:
+                            return None
+                        with open(file_path, "wb") as f:
+                            async for chunk in file_response.content.iter_chunked(16384):
+                                f.write(chunk)
+                        return file_path
         except Exception as e:
-            logger.error(f"API Token Error: {e}")
+            logger.error(f"API Download Error: {e}")
         return None
-      
+        
