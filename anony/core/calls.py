@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 # This file is part of AnonXMusic
 
-
+import anony
 from ntgcalls import (ConnectionNotFound, TelegramServerError,
                       RTMPStreamingUnsupported, ConnectionError)
 from pyrogram.errors import (ChatSendMediaForbidden, ChatSendPhotosForbidden,
@@ -18,28 +18,20 @@ class TgCall(PyTgCalls):
     def __init__(self):
         self.clients = []
 
-    # 🚀 Circular Import Fix: Imports ko function ke andar daal diya 🚀
-    def get_deps(self):
-        from anony import app, config, db, lang, logger, queue, userbot, yt
-        return app, config, db, lang, logger, queue, userbot, yt
-
     async def pause(self, chat_id: int) -> bool:
-        _, _, db, _, _, _, _, _ = self.get_deps()
-        client = await db.get_assistant(chat_id)
-        await db.playing(chat_id, paused=True)
+        client = await anony.db.get_assistant(chat_id)
+        await anony.db.playing(chat_id, paused=True)
         return await client.pause(chat_id)
 
     async def resume(self, chat_id: int) -> bool:
-        _, _, db, _, _, _, _, _ = self.get_deps()
-        client = await db.get_assistant(chat_id)
-        await db.playing(chat_id, paused=False)
+        client = await anony.db.get_assistant(chat_id)
+        await anony.db.playing(chat_id, paused=False)
         return await client.resume(chat_id)
 
     async def stop(self, chat_id: int) -> None:
-        _, _, db, _, _, queue, _, _ = self.get_deps()
-        client = await db.get_assistant(chat_id)
-        queue.clear(chat_id)
-        await db.remove_call(chat_id)
+        client = await anony.db.get_assistant(chat_id)
+        anony.queue.clear(chat_id)
+        await anony.db.remove_call(chat_id)
 
         try:
             await client.leave_call(chat_id, close=False)
@@ -53,19 +45,18 @@ class TgCall(PyTgCalls):
         media: Media | Track,
         seek_time: int = 0,
     ) -> None:
-        app, config, db, lang, logger, queue, _, yt = self.get_deps()
-        client = await db.get_assistant(chat_id)
-        _lang = await lang.get_lang(chat_id)
+        client = await anony.db.get_assistant(chat_id)
+        _lang = await anony.lang.get_lang(chat_id)
         _thumb = (
             await thumb.generate(media)
             if isinstance(media, Track)
-            else config.DEFAULT_THUMB
-        ) if config.THUMB_GEN else None
+            else anony.config.DEFAULT_THUMB
+        ) if anony.config.THUMB_GEN else None
 
         if not media.file_path:
-            await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
+            await message.edit_text(_lang["error_no_file"].format(anony.config.SUPPORT_CHAT))
             return await self.play_next(chat_id)
-          
+
         ffmpeg_params = ""
         actual_file_path = media.file_path
 
@@ -78,10 +69,10 @@ class TgCall(PyTgCalls):
                 # FFmpeg me direct HTTP Headers pass kar rahe hain!
                 ffmpeg_params = f'-headers "X-Download-Token: {token}\r\n" -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
             except Exception as e:
-                logger.error(f"Stream Parse Error: {e}")
+                anony.logger.error(f"Stream Parse Error: {e}")
         elif str(media.file_path).startswith("http"):
             ffmpeg_params = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
-            
+
         if seek_time > 1:
             ffmpeg_params += f" -ss {seek_time}"
 
@@ -105,7 +96,7 @@ class TgCall(PyTgCalls):
             )
             if not seek_time:
                 media.time = 1
-                await db.add_call(chat_id)
+                await anony.db.add_call(chat_id)
                 text = _lang["play_media"].format(
                     media.url,
                     media.title,
@@ -126,21 +117,21 @@ class TgCall(PyTgCalls):
                         await message.edit_text(text, reply_markup=keyboard)
                 except (ChatSendMediaForbidden, ChatSendPhotosForbidden, MessageIdInvalid):
                     if _thumb:
-                        sent = await app.send_photo(
+                        sent = await anony.app.send_photo(
                             chat_id=chat_id,
                             photo=_thumb,
                             caption=text,
                             reply_markup=keyboard,
                         )
                     else:
-                        sent = await app.send_message(
+                        sent = await anony.app.send_message(
                             chat_id=chat_id,
                             text=text,
                             reply_markup=keyboard,
                         )
                     media.message_id = sent.id
         except FileNotFoundError:
-            await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
+            await message.edit_text(_lang["error_no_file"].format(anony.config.SUPPORT_CHAT))
             await self.play_next(chat_id)
         except exceptions.NoActiveGroupCall:
             await self.stop(chat_id)
@@ -156,21 +147,19 @@ class TgCall(PyTgCalls):
             await message.edit_text(_lang["error_rtmp"])
 
     async def replay(self, chat_id: int) -> None:
-        app, _, db, lang, _, queue, _, _ = self.get_deps()
-        if not await db.get_call(chat_id):
+        if not await anony.db.get_call(chat_id):
             return
 
-        media = queue.get_current(chat_id)
-        _lang = await lang.get_lang(chat_id)
-        msg = await app.send_message(chat_id=chat_id, text=_lang["play_again"])
+        media = anony.queue.get_current(chat_id)
+        _lang = await anony.lang.get_lang(chat_id)
+        msg = await anony.app.send_message(chat_id=chat_id, text=_lang["play_again"])
         await self.play_media(chat_id, msg, media)
 
     async def play_next(self, chat_id: int) -> None:
-        app, config, _, lang, _, queue, _, yt = self.get_deps()
-        media = queue.get_next(chat_id)
+        media = anony.queue.get_next(chat_id)
         try:
             if media.message_id:
-                await app.delete_messages(
+                await anony.app.delete_messages(
                     chat_id=chat_id,
                     message_ids=media.message_id,
                     revoke=True,
@@ -182,14 +171,14 @@ class TgCall(PyTgCalls):
         if not media:
             return await self.stop(chat_id)
 
-        _lang = await lang.get_lang(chat_id)
-        msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
+        _lang = await anony.lang.get_lang(chat_id)
+        msg = await anony.app.send_message(chat_id=chat_id, text=_lang["play_next"])
         if not media.file_path:
-            media.file_path = await yt.download(media.id, video=media.video)
+            media.file_path = await anony.yt.download(media.id, video=media.video)
             if not media.file_path:
                 await self.stop(chat_id)
                 return await msg.edit_text(
-                    _lang["error_no_file"].format(config.SUPPORT_CHAT)
+                    _lang["error_no_file"].format(anony.config.SUPPORT_CHAT)
                 )
 
         media.message_id = msg.id
@@ -197,7 +186,7 @@ class TgCall(PyTgCalls):
 
     async def ping(self) -> float:
         pings = [client.ping for client in self.clients]
-        return round(sum(pings) / len(pings), 2) if pings else 0
+        return round(sum(pings) / len(pings), 2)
 
     async def decorators(self, client: PyTgCalls) -> None:
         @client.on_update()
@@ -214,12 +203,11 @@ class TgCall(PyTgCalls):
                     await self.stop(update.chat_id)
 
     async def boot(self) -> None:
-        _, _, _, _, logger, _, userbot, _ = self.get_deps()
         PyTgCallsSession.notice_displayed = True
-        for ub in userbot.clients:
+        for ub in anony.userbot.clients:
             client = PyTgCalls(ub, cache_duration=100)
             await client.start()
             self.clients.append(client)
             await self.decorators(client)
-        logger.info("PyTgCalls client(s) started.")
-              
+        anony.logger.info("PyTgCalls client(s) started.")
+      
