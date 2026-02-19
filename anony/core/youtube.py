@@ -11,21 +11,6 @@ from py_yt import Playlist, VideosSearch
 from anony import logger
 from anony.helpers import Track, utils
 
-API_URL = "https://shrutibots.site"
-
-async def fetch_api_url():
-    global API_URL
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://pastebin.com/raw/rLsBhAQa", timeout=5) as response:
-                if response.status == 200:
-                    API_URL = (await response.text()).strip()
-    except Exception:
-        pass
-
-# Boot time par original API link load karna
-asyncio.get_event_loop().create_task(fetch_api_url())
-
 class YouTube:
     def __init__(self):
         self.base = "https://www.youtube.com/watch?v="
@@ -36,7 +21,6 @@ class YouTube:
         )
 
     async def save_cookies(self, urls: list[str]) -> None:
-        logger.info("Cookies bypassed. Using ShrutiBots API for downloads.")
         pass
 
     def valid(self, url: str) -> bool:
@@ -84,52 +68,35 @@ class YouTube:
         return tracks
 
     async def download(self, video_id: str, video: bool = False) -> str | None:
-        url = self.base + video_id
-        DOWNLOAD_DIR = "downloads"
-        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+        logger.info(f"Extracting Superfast Direct Stream URL for {video_id}...")
         
-        ext = "mp4" if video else "mp3"
-        file_path = os.path.join(DOWNLOAD_DIR, f"{video_id}.{ext}")
-
-        # Agar purani file corrupt ya khali hai toh usko delete maro
-        if os.path.exists(file_path):
-            if os.path.getsize(file_path) > 50000:
-                return file_path
-            else:
-                os.remove(file_path)
-
-        global API_URL
-        logger.info(f"Downloading {video_id} using ShrutiBots API Bypass... ({API_URL})")
+        # Multiple public APIs taaki bot kabhi down na ho
+        apis = [
+            "https://pipedapi.kavin.rocks",
+            "https://pipedapi.smnz.de",
+            "https://pipedapi.adminforge.de"
+        ]
         
-        try:
-            async with aiohttp.ClientSession() as session:
-                params = {"url": video_id, "type": "video" if video else "audio"}
-                async with session.get(f"{API_URL}/download", params=params, timeout=60) as response:
-                    if response.status != 200:
-                        return None
-                    data = await response.json()
-                    download_token = data.get("download_token")
-                    
-                    if not download_token:
-                        return None
-                    
-                    stream_url = f"{API_URL}/stream/{video_id}?type={'video' if video else 'audio'}"
-                    
-                    async with session.get(stream_url, headers={"X-Download-Token": download_token}, timeout=300) as file_response:
-                        if file_response.status != 200:
-                            return None
-                            
-                        with open(file_path, "wb") as f:
-                            async for chunk in file_response.content.iter_chunked(16384):
-                                f.write(chunk)
-                                
-                        # FINAL CHECK: Khali file download hone par error do
-                        if os.path.getsize(file_path) < 50000:
-                            os.remove(file_path)
-                            return None
-                            
-                        return file_path
-        except Exception as e:
-            logger.error(f"API Download Exception: {e}")
-            return None
-            
+        async with aiohttp.ClientSession() as session:
+            for api in apis:
+                try:
+                    async with session.get(f"{api}/streams/{video_id}", timeout=5) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            if video:
+                                streams = data.get("videoStreams", [])
+                                stream = next((s for s in streams if not s.get("videoOnly")), None)
+                                if stream: 
+                                    return stream["url"]
+                            else:
+                                streams = data.get("audioStreams", [])
+                                if streams:
+                                    logger.info("Direct Stream Link fetched successfully! Instantly playing...")
+                                    return streams[0]["url"]
+                except Exception as e:
+                    logger.warning(f"Failed to fetch from {api}: {e}")
+                    continue
+        
+        logger.error("All Direct Stream APIs failed.")
+        return None
+        
